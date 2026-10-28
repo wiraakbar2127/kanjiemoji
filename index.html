@@ -745,7 +745,7 @@ button{cursor:pointer}
     0 15px 30px rgba(72,135,190,.16),
     inset 0 2px 0 #fff;
   padding:11px 15px 14px;
-  backdrop-filter:blur(4px);
+
 }
 .monster-hud{
   position:absolute;
@@ -929,7 +929,7 @@ button{cursor:pointer}
 .result-overlay{
   position:absolute;inset:0;z-index:38;display:grid;place-items:center;padding:18px;
   background:rgba(184,222,248,.46);
-  backdrop-filter:blur(3px);
+
   cursor:pointer;
   animation:resultFadeIn .18s ease;
 }
@@ -7678,8 +7678,17 @@ html body #gameScreen.hidden{
   function getCustomData(){
     try{return JSON.parse(localStorage.getItem("kmr_custom")||"[]")}catch{return []}
   }
+  let learnedCacheRaw=null,learnedCacheData={};
   function getLearned(){
-    try{return JSON.parse(localStorage.getItem("kmr_learned")||"{}")}catch{return {}}
+    /* Parse JSON besar hanya jika isi storage berubah (sebelumnya parse ulang 5x per soal). */
+    let raw;
+    try{raw=localStorage.getItem("kmr_learned")||"{}"}catch{return {}}
+    if(raw!==learnedCacheRaw){
+      try{learnedCacheData=JSON.parse(raw)}catch{learnedCacheData={}}
+      if(!learnedCacheData || typeof learnedCacheData!=="object")learnedCacheData={};
+      learnedCacheRaw=raw;
+    }
+    return learnedCacheData;
   }
 
   function normalizeVocabularyItem(x, fallbackLevel="N3"){
@@ -8547,6 +8556,7 @@ html body #gameScreen.hidden{
   }
 
   let composing=false;
+  function isImeBusy(e){return !!(e && (e.isComposing || e.keyCode===229));}
   $("answer").addEventListener("compositionstart",()=>composing=true);
   function convertReadingAnswerInput(){
     if(composing || state.locked || settings.qmode!=="reading")return;
@@ -8946,6 +8956,7 @@ html body #gameScreen.hidden{
       return;
     }
 
+    composing=false;
     state.masteryWrongCounted=false;
     state.masteryChange=null;
     setEnemy();
@@ -9213,7 +9224,8 @@ html body #gameScreen.hidden{
 
   $("startGame").onclick=startGame;
   $("answer").addEventListener("keydown",e=>{
-    if(e.key==="Enter" && !composing){
+    if(e.key==="Enter" && !isImeBusy(e)){
+      composing=false;
       e.preventDefault();
       if(state.resultOpen) continueAfterResult();
       else submit();
@@ -9228,7 +9240,7 @@ html body #gameScreen.hidden{
   });
 
   document.addEventListener("keydown",e=>{
-    if(e.key==="Enter" && state.resultOpen && !composing){
+    if(e.key==="Enter" && state.resultOpen && !isImeBusy(e)){
       e.preventDefault();
       continueAfterResult();
     }
