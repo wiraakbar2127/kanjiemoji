@@ -1979,12 +1979,10 @@ button{cursor:pointer}
       scale(var(--mobile-enemy-scale,.26));
     transform-origin:center center !important;
     filter:
-      drop-shadow(0 18px 22px rgba(0,0,0,.34))
-      blur(var(--mobile-motion-blur,0px));
-    will-change:transform,filter;
+      drop-shadow(0 18px 22px rgba(0,0,0,.34));
+    will-change:transform;
     transition:
-      transform 105ms cubic-bezier(.22,.61,.36,1),
-      filter 105ms linear;
+      transform 105ms cubic-bezier(.22,.61,.36,1);
     backface-visibility:hidden;
     -webkit-backface-visibility:hidden;
   }
@@ -6595,9 +6593,10 @@ html body #gameScreen.hidden{
         <div class="field">
           <label>LEVEL JLPT</label>
           <select id="jlpt">
+            <option value="" data-placeholder="1" selected disabled hidden>Level</option>
             <option value="N1">N1</option>
             <option value="N2">N2</option>
-            <option value="N3" selected>N3</option>
+            <option value="N3">N3</option>
             <option value="N4">N4</option>
             <option value="N5">N5</option>
             <option value="ALL">全レベル</option>
@@ -7043,6 +7042,7 @@ html body #gameScreen.hidden{
     if(!select)return;
 
     [...select.options].forEach(opt=>{
+      if(opt.dataset.placeholder)return;
       opt.disabled=false;
       opt.textContent=opt.value==="ALL" ? "全レベル" : opt.value;
     });
@@ -7053,7 +7053,8 @@ html body #gameScreen.hidden{
   function updateCooldownNotice(){
     const el=$("cooldownNotice");
     if(!el)return;
-    const level=$("jlpt")?.value || settings.jlpt;
+    const level=$("jlpt")?.value;
+    if(!level){el.textContent="";return;}
     const remaining=getCooldownRemaining(level);
     el.textContent=remaining>0 ? `${level} · あと ${formatCooldown(remaining)}` : "";
   }
@@ -7428,8 +7429,14 @@ html body #gameScreen.hidden{
     const vv=window.visualViewport;
     const h=Math.max(240,Math.round(vv?.height || window.innerHeight));
     const top=Math.max(0,Math.round(vv?.offsetTop || 0));
-    document.documentElement.style.setProperty("--game-vvh",`${h}px`);
-    document.documentElement.style.setProperty("--game-vvtop",`${top}px`);
+    if(h!==syncMobileGameViewport._h){
+      syncMobileGameViewport._h=h;
+      document.documentElement.style.setProperty("--game-vvh",`${h}px`);
+    }
+    if(top!==syncMobileGameViewport._top){
+      syncMobileGameViewport._top=top;
+      document.documentElement.style.setProperty("--game-vvtop",`${top}px`);
+    }
 
     const inGame=!$("gameScreen").classList.contains("hidden");
     const mobile=inGame && isMobileGameViewport();
@@ -7443,9 +7450,19 @@ html body #gameScreen.hidden{
     document.body.classList.toggle("keyboard-open",keyboardOpen);
 
     if(mobile){
-      document.documentElement.scrollTop=0;
-      document.body.scrollTop=0;
+      if(document.documentElement.scrollTop)document.documentElement.scrollTop=0;
+      if(document.body.scrollTop)document.body.scrollTop=0;
     }
+  }
+
+  /* Throttle: maksimal 1x per frame agar event visualViewport tidak membanjiri main thread saat mengetik */
+  let viewportSyncRaf=0;
+  function scheduleViewportSync(){
+    if(viewportSyncRaf)return;
+    viewportSyncRaf=requestAnimationFrame(()=>{
+      viewportSyncRaf=0;
+      syncMobileGameViewport();
+    });
   }
 
   function keepAnswerKeyboard(delay=0){
@@ -7467,8 +7484,8 @@ html body #gameScreen.hidden{
   }
 
   if(window.visualViewport){
-    window.visualViewport.addEventListener("resize",syncMobileGameViewport);
-    window.visualViewport.addEventListener("scroll",syncMobileGameViewport);
+    window.visualViewport.addEventListener("resize",scheduleViewportSync);
+    window.visualViewport.addEventListener("scroll",scheduleViewportSync);
   }
   window.addEventListener("resize",()=>{
     syncMobileGameViewport();
@@ -8818,7 +8835,7 @@ html body #gameScreen.hidden{
       const scale=startScale+(endScale-startScale)*eased;
 
       /* Blur hampir nol di awal, lalu meningkat saat monster dekat layar. */
-      const blur=Math.max(0,Math.pow(p,2.15)*2.6);
+      const blur=0; /* blur animasi dimatikan: penyebab lag saat mengetik */
       wrap.style.setProperty("--mobile-enemy-scale",scale.toFixed(4));
       wrap.style.setProperty("--mobile-motion-blur",`${blur.toFixed(2)}px`);
     }else{
@@ -8947,7 +8964,7 @@ html body #gameScreen.hidden{
         clearInterval(state.timer);
         timeout();
       }
-    },40);
+    },60);
   }
 
   function submit(){
@@ -9129,6 +9146,12 @@ html body #gameScreen.hidden{
   });
 
   function startGame(){
+    if(!$("jlpt").value){
+      const note=$("cooldownNotice");
+      if(note)note.textContent="Pilih level dulu";
+      $("jlpt").focus();
+      return;
+    }
     settings.jlpt=$("jlpt").value;
 
     if(!hasVocabularyForLevel(settings.jlpt)){
