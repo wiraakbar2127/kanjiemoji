@@ -1447,8 +1447,7 @@ button{cursor:pointer}
   display:grid;
   place-items:center;
   padding:18px;
-  background:rgba(103,159,204,.38);
-  backdrop-filter:blur(7px);
+  background:rgba(103,159,204,.55);
 }
 .continue-overlay.hidden{display:none}
 .continue-card{
@@ -7131,6 +7130,19 @@ html body #gameScreen.hidden{
       }).length;
   }
 
+  function getMemorizedCounts(){
+    const counts={ALL:0};
+    const learned=getLearned();
+    for(const k in learned){
+      const item=normalizeLearnedItem(learned[k]);
+      if(item.mastery>0){
+        counts.ALL++;
+        counts[item.jlpt]=(counts[item.jlpt]||0)+1;
+      }
+    }
+    return counts;
+  }
+
   function openContinueSelector(){
     const saves=getGameSaves();
     const modeOrder=["reading","meaning"];
@@ -7150,6 +7162,7 @@ html body #gameScreen.hidden{
       return;
     }
 
+    const memorizedCounts=getMemorizedCounts();
     $("continueLevelList").innerHTML=available.map(item=>{
       const {key,level,mode,save}=item;
       const qmode=mode==="meaning" ? "意味" : "読みかた";
@@ -7160,7 +7173,7 @@ html body #gameScreen.hidden{
       const remaining=getCooldownRemaining(level);
       const locked=remaining>0;
 
-      const memorizedCount=getMemorizedVocabCount(level);
+      const memorizedCount=memorizedCounts[level]||0;
       const badge=mode==="meaning" ? "意" : "読";
       const badgeClass=mode==="meaning" ? "meaning" : "reading";
 
@@ -7338,7 +7351,7 @@ html body #gameScreen.hidden{
     });
 
     state={
-      pool:buildPool(),queue:[],index:0,
+      pool:[],queue:[],index:0,
       correct:Number(save.state?.correct)||0,
       attempted:Number(save.state?.attempted)||0,
       target:Infinity,
@@ -8652,8 +8665,18 @@ html body #gameScreen.hidden{
     for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[x[i],x[j]]=[x[j],x[i]]}
     return x;
   }
-  function allData(){return [...DEFAULT_DATA,...getCustomData()]}
-  function buildPool(){
+  let customCacheRaw=null,customCacheData=[];
+  function getCustomDataCached(){
+    const raw=localStorage.getItem("kmr_custom")||"[]";
+    if(raw!==customCacheRaw){
+      try{customCacheData=JSON.parse(raw)}catch{customCacheData=[]}
+      if(!Array.isArray(customCacheData))customCacheData=[];
+      customCacheRaw=raw;
+    }
+    return customCacheData;
+  }
+  function allData(){return [...DEFAULT_DATA,...getCustomDataCached()]}
+  function buildPool(doShuffle=true){
     let pool=allData();
     if(settings.jlpt!=="ALL")pool=pool.filter(q=>q.jlpt===settings.jlpt);
     if(settings.qmode==="meaning"){
@@ -8661,10 +8684,10 @@ html body #gameScreen.hidden{
     }else{
       pool=pool.filter(q=>String(q.reading||"").trim().length>0);
     }
-    return shuffle(pool);
+    return doShuffle ? shuffle(pool) : pool;
   }
   function nextQuestion(){
-    const pool=buildPool();
+    const pool=buildPool(false);
     if(!pool.length)return null;
 
     /* ALL adalah mode latihan bebas. Seluruh N5-N1 dicampur acak,
@@ -9170,7 +9193,7 @@ html body #gameScreen.hidden{
     }
 
     state={
-      pool:buildPool(),queue:[],index:0,correct:0,attempted:0,
+      pool:[],queue:[],index:0,correct:0,attempted:0,
       target:Infinity,
       score:0,combo:0,hp:3,bossActive:false,bossDefeated:false,bossSeen:false,nextBossAt:10,
       resultOpen:false,resultOutcome:null,
